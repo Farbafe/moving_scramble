@@ -12,7 +12,7 @@ GRID_SIZE_VERTICAL = 5
 VOWEL_SPLIT = int(2 / 5 * GRID_SIZE_VERTICAL)
 
 ROTATION_TIME = 7
-GAME_TIME = 60
+GAME_TIME = 30
 
 english_letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 english_vowels = ['A', 'E', 'I', 'O', 'U']
@@ -40,7 +40,7 @@ def select_letters_for_game():
         return _letters
 
     letters = []
-    for _ in range(int(GAME_TIME / ROTATION_TIME) + 1 + GRID_SIZE_HORIZONTAL):
+    for _ in range(GAME_TIME // ROTATION_TIME + GRID_SIZE_HORIZONTAL):
         letters.append(select_three_letters())
     return letters
 
@@ -62,33 +62,28 @@ def check_points(words):
 
 
 def display_letters():
-    def rotate_letters(index):
-        global characters_in_stream, letters, letters_to_display
-        letters_to_display = letters[index: index + GRID_SIZE_HORIZONTAL]
+    def _display_letters(letters_to_display):
+        global characters_in_stream
         print('\033c')
-        if len(letters_to_display) < GRID_SIZE_HORIZONTAL:
-            raise IndexError
         for i, column in enumerate(letters_to_display):
             for ii, letter in enumerate(column):
                 print('\033[{};{}H{}'.format(ii * 2 + 2,  i * 2 + 2, letter))
         print('\033[{};{}H'.format((GRID_SIZE_VERTICAL + 1) * 2, 0))
         sys.stdout.write(characters_in_stream)
         sys.stdout.flush()
+    def rotate_letters():
+        global letters, letters_to_display
+        for index in range(len(letters) - GRID_SIZE_HORIZONTAL + 1):
+            letters_to_display = letters[index: index + GRID_SIZE_HORIZONTAL]
+            yield letters_to_display
     global is_display_rotated_done
-    time_start = 0
-    index = 0
-    while True:  # this should be refactored into a for loop, with a time sleep
-        if time.time() - time_start > ROTATION_TIME:
-            time_start = time.time()
-            index += 1
-            try:
-                rotate_letters(index)
-            except IndexError:
-                is_display_rotated_done = True
-                print('Press enter if you see this message!\r\n')
-                sys.stdout.flush()
-                sys.stdin.flush()
-                break
+    for _letters_to_display in rotate_letters():
+        _display_letters(_letters_to_display)
+        time.sleep(ROTATION_TIME)
+    is_display_rotated_done = True
+    sys.stdout.write('Press enter when you see this message.\n')
+    sys.stdout.flush()
+    sys.stdin.flush()
 
 
 class Player:
@@ -100,13 +95,17 @@ class Player:
         self.max_points = max_points
         self.longest_word_length = longest_word_length
 
-    def __str__(self):  # this function sure does a lot for a print statement
+    def calculate_score(self):
         if self.score == 0:
             self.word_list = check_words(self.word_list)
-            self.longest_word_length = max(len(word) for word in self.word_list)
-            self.score, self.max_points = check_points(self.word_list)
-            self.word_list = list(self.word_list)
-            self.word_count = len(self.word_list)
+            if self.word_list:
+                self.longest_word_length = max(len(word) for word in self.word_list)
+                self.score, self.max_points = check_points(self.word_list)
+                self.word_list = list(self.word_list)
+                self.word_count = len(self.word_list)
+
+    def __str__(self):
+        self.calculate_score()
         return '{}: {} points, {} words, maximum points: {}, maximum length: {}\n{}'\
             .format(self.name, self.score, self.word_count, self.max_points, self.longest_word_length, self.word_list)
 
@@ -116,7 +115,7 @@ letters = []
 # is_single_player = input('Do you want to play single player? y/n')
 is_single_player = 'n'
 db = None
-game_number = '1000'
+game_number = '1000' # todo make simple input to choose game_number if joining game, given game_number if host to allow multi simultaneous games
 if is_single_player == 'y':
     letters = select_letters_for_game()
 else:
@@ -135,7 +134,7 @@ else:
             for value in values:
                 letters_online_list_inner.append(value)
             letters_online_list.append(letters_online_list_inner)
-        letters = letters_online_list[0]  # don't really care why the biggest list is in a list \_O.o_/
+        letters = letters_online_list[0]
 name = ''
 try:
     with open('name.txt', 'r', encoding='utf-8') as f:
@@ -145,13 +144,15 @@ except FileNotFoundError:
     with open('name.txt', 'w', encoding='utf-8') as f:
         f.write(name)
 player = Player(name)
-input('Press enter when everyone is read.')
+input('Press enter when everyone is ready.')
 threading.Thread(target=display_letters).start()
 is_display_rotated = False
 is_display_rotated_done = False
 characters_in_stream = ''
 while not is_display_rotated_done:
-    getch = readchar.readchar()
+    getch = readchar.readchar() # best to use separate implementations for windows and linux/mac and include timeout to read input
+    if is_display_rotated_done:
+        break
     sys.stdout.write(getch)
     sys.stdout.flush()
     if getch == '\r':
@@ -169,9 +170,10 @@ while not is_display_rotated_done:
         break
     else:
         characters_in_stream += getch
-print(player)
+print('Time is up!\n\nYour profile:\n{}'.format(player))
 if is_single_player == 'y':
     exit()
+print('\nFetching players\' profiles...')
 data = vars(player)
 db.post('/games/A{}'.format(game_number), data)
 time.sleep(10)  # long enough for most people's internet to catch up... most of the time!
