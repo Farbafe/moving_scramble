@@ -149,7 +149,7 @@ threading.Thread(target=display_letters).start()
 is_display_rotated = False
 is_display_rotated_done = False
 characters_in_stream = ''
-while not is_display_rotated_done:
+while True:
     getch = readchar.readchar() # best to use separate implementations for windows and linux/mac and include timeout to read input
     if is_display_rotated_done:
         break
